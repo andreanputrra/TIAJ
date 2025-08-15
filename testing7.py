@@ -1,13 +1,19 @@
 import pandas as pd
 import streamlit as st
 import os
-import sqlite3
+import psycopg2
 from datetime import datetime
 
 DB_FILE = "pengeluaran_kas.db"
 
 def get_connection():
-    return sqlite3.connect(DB_FILE)
+    return psycopg2.connect(
+        host="aws-1-ap-southeast-1.pooler.supabase.com",
+        database="postgres",
+        user="postgres.fmvclahyaekbujfbkoaq",
+        password="IsatechArthaJaya",
+        port=6543
+    )
 
 def setup_database():
     conn = get_connection()
@@ -47,7 +53,7 @@ def save_data(row):
         INSERT INTO kas (id, tanggal, deskripsi_pekerjaan, deskripsi_pengeluaran,
                          jumlah_barang, unit, harga_per_satuan, total_harga, keterangan,
                          po_number, invoice_number, surat_jalan_number)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", row)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""", row)
     conn.commit()
     conn.close()
 
@@ -57,7 +63,7 @@ def delete_data_by_index(index):
         id_to_delete = df.iloc[index]['id']
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM kas WHERE id = ?", (id_to_delete,))
+        cursor.execute("DELETE FROM kas WHERE id = %s", (id_to_delete,))
         conn.commit()
         conn.close()
 
@@ -66,18 +72,18 @@ def update_data_by_id(data):
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE kas SET
-            tanggal = ?,
-            deskripsi_pekerjaan = ?,
-            deskripsi_pengeluaran = ?,
-            jumlah_barang = ?,
-            unit = ?,
-            harga_per_satuan = ?,
-            total_harga = ?,
-            keterangan = ?,
-            po_number = ?,
-            invoice_number = ?,
-            surat_jalan_number = ?
-        WHERE id = ?
+            tanggal = %s,
+            deskripsi_pekerjaan = %s,
+            deskripsi_pengeluaran = %s,
+            jumlah_barang = %s,
+            unit = %s,
+            harga_per_satuan = %s,
+            total_harga = %s,
+            keterangan = %s,
+            po_number = %s,
+            invoice_number = %s,
+            surat_jalan_number = %s
+        WHERE id = %s
     """, data)
     conn.commit()
     conn.close()
@@ -292,13 +298,12 @@ def print_invoice(invoice_data, items, output_file="invoice_print.html"):
                 <td style="width:50%; vertical-align:top;">
                     <b>TO:</b><br>{invoice_data['to']}
                 </td>
-                <td style="width:50%; vertical-align:top;">
+                <td style="width:50%; vertical-align:top; text-align:right;">
                     <b>INVOICE DATE:</b> {invoice_data['invoice_date']}<br>
                     <b>INVOICE NO:</b> {invoice_data['invoice_no']}<br>
                     <b>CURRENCY:</b> {invoice_data['currency']}<br>
                     <b>PO NO:</b> {invoice_data['po_no']}<br>
                     <b>PO DATE:</b> {invoice_data['po_date']}<br>
-                    <b>SURAT JALAN:</b> {invoice_data.get('surat_jalan_no', '')}
                 </td>
             </tr>
         </table>
@@ -356,8 +361,149 @@ def print_invoice(invoice_data, items, output_file="invoice_print.html"):
     )
     st.success("Invoice berhasil dibuat. Silakan download untuk melihat hasilnya.")
 
+def print_surat_jalan(surat_jalan_data, items, output_file="surat_jalan_print.html"):
+    logo_base64 = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/..."  # ...base64 logo Anda...
+    items_html = ""
+    for item in items:
+        items_html += f"""
+        <tr>
+            <td style="text-align:center;">{item['no']}</td>
+            <td>{item['description']}</td>
+            <td style="text-align:center;">{item['qty']}</td>
+        </tr>
+        """
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Surat Jalan</title>
+        <style>
+            body {{
+                font-family: 'Segoe UI', Arial, sans-serif;
+                margin: 40px;
+                color: #222;
+                background: #fff;
+            }}
+            .header {{
+                display: flex;
+                align-items: center;
+                border-bottom: 3px solid #1976d2;
+                padding-bottom: 12px;
+                margin-bottom: 28px;
+            }}
+            .logo {{
+                width: 70px;
+                height: auto;
+                margin-right: 24px;
+            }}
+            .company-info {{
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+            }}
+            .company-name {{
+                font-size: 2.2em;
+                font-weight: bold;
+                color: #1976d2;
+                letter-spacing: 1px;
+            }}
+            .company-address {{
+                font-size: 1.05em;
+                color: #333;
+                margin-top: 2px;
+            }}
+            .suratjalan-title {{
+                font-size: 1.4em;
+                font-weight: bold;
+                color: #1976d2;
+                margin: 32px 0 10px 0;
+            }}
+            .info-table {{
+                width: 100%;
+                margin-bottom: 18px;
+            }}
+            .info-table td {{
+                vertical-align: top;
+                padding: 2px 8px;
+                font-size: 1em;
+            }}
+            .info-label {{
+                font-weight: bold;
+                color: #1976d2;
+            }}
+            .main-table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 32px;
+            }}
+            .main-table th, .main-table td {{
+                border: 1px solid #cfd8dc;
+                padding: 12px 10px;
+                font-size: 1em;
+            }}
+            .main-table th {{
+                background: #e3f2fd;
+                font-weight: bold;
+                text-align: center;
+                color: #1976d2;
+                letter-spacing: 0.5px;
+            }}
+            .main-table td {{
+                background: #fff;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <img src="data:image/jpeg;base64,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" class="logo" alt="Logo Perusahaan">
+            <div class="company-info">
+                <div class="company-name">{surat_jalan_data['company_name']}</div>
+                <div class="company-address">{surat_jalan_data['company_address']}</div>
+            </div>
+        </div>
+        <div class="suratjalan-title">SURAT JALAN</div>
+        <table class="info-table">
+            <tr>
+                <td style="width:25%; vertical-align:top;">
+                    <span class="info-label">TANGGAL:</span> {surat_jalan_data['tanggal_surat_jalan']}
+                </td>
+                <td style="width:25%; vertical-align:top;">
+                    <span class="info-label">KEPADA:</span> {surat_jalan_data['kepada']}
+                </td>
+                <td style="width:25%; vertical-align:top;">
+                    <span class="info-label">NO SURAT JALAN:</span> {surat_jalan_data['no_surat_jalan']}
+                </td>
+                <td style="width:25%; vertical-align:top;">
+                    <span class="info-label">PO NO:</span> {surat_jalan_data['po_no']}
+                </td>
+            </tr>
+        </table>
+        <table class="main-table">
+            <tr>
+                <th>NO</th>
+                <th>DESCRIPTION</th>
+                <th>QTY</th>
+            </tr>
+            {items_html}
+        </table>
+    </body>
+    </html>
+    """
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(html)
+    with open(output_file, "r", encoding="utf-8") as f:
+        html_data = f.read()
+    st.download_button(
+        label="📥 Download Surat Jalan (HTML)",
+        data=html_data,
+        file_name="surat_jalan.html",
+        mime="text/html"
+    )
+    st.success("Surat Jalan berhasil dibuat. Silakan download untuk melihat hasilnya.")
+
 st.set_page_config(page_title="Pengeluaran Kas", layout="wide")
-menu = st.sidebar.radio("Pilih Halaman", ["Dashboard", "Input Data", "Data & Pencarian", "Kelola Data", "Cetak Invoice"])
+menu = st.sidebar.radio("Pilih Halaman", ["Dashboard", "Input Data", "Data & Pencarian", "Kelola Data", "Cetak Invoice", "Cetak Surat Jalan"])
 
 if menu == "Dashboard":
     st.title("📊 Dashboard Pengeluaran")
@@ -598,3 +744,51 @@ elif menu == "Cetak Invoice":
             print_invoice(invoice_data, items)
     else:
         st.info("Belum ada data transaksi untuk dibuat invoice.")
+
+elif menu == "Cetak Surat Jalan":
+    st.title("🚚 Cetak Surat Jalan")
+    df = load_data()
+    if not df.empty:
+        df['tanggal'] = df['tanggal'].dt.strftime('%Y-%m-%d')
+        df['label'] = df.apply(lambda x: f"{x['id']} | {x['deskripsi_pekerjaan']} | {x['tanggal']}", axis=1)
+        selected_rows = st.multiselect(
+            "Pilih Data Transaksi untuk Surat Jalan",
+            options=df.index,
+            format_func=lambda idx: df.loc[idx, 'label']
+        )
+        kepada = ""
+        tanggal_surat_jalan = ""
+        no_surat_jalan = ""
+        po_no = ""
+        if selected_rows:
+            row = df.loc[selected_rows[0]]
+            kepada = row.get('kepada', '')
+            tanggal_surat_jalan = row.get('tanggal', '')
+            no_surat_jalan = row.get('surat_jalan_number', '')
+            po_no = row.get('po_number', '')
+        company_name = st.text_input("Nama Perusahaan", value="PT. ISATECH ARTHA JAYA")
+        company_address = st.text_area("Alamat Perusahaan", value="Jl. ...")
+        kepada = st.text_input("Kepada", value=kepada)
+        tanggal_surat_jalan = st.text_input("Tanggal Surat Jalan", value=tanggal_surat_jalan)
+        no_surat_jalan = st.text_input("No Surat Jalan", value=no_surat_jalan)
+        po_no = st.text_input("PO Number", value=po_no)
+        items = []
+        for i, idx in enumerate(selected_rows, 1):
+            row = df.loc[idx]
+            items.append({
+                "no": i,
+                "description": row['deskripsi_pekerjaan'],
+                "qty": int(row['jumlah_barang'])
+            })
+        if items and st.button("Cetak Surat Jalan"):
+            surat_jalan_data = {
+                "company_name": company_name,
+                "company_address": company_address,
+                "kepada": kepada,
+                "tanggal_surat_jalan": tanggal_surat_jalan,
+                "no_surat_jalan": no_surat_jalan,
+                "po_no": po_no,
+            }
+            print_surat_jalan(surat_jalan_data, items)
+    else:
+        st.info("Belum ada data transaksi untuk dibuat surat jalan.")
